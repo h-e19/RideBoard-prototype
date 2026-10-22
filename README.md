@@ -3,7 +3,6 @@
 A ride board web app, linked from a WhatsApp bot, that helps IBA students find and offer carpools between home and campus.
 
 **Group:** Hijab Ejaz, Bareerah Shahid
-**Live prototype:** `https://<your-username>.github.io/<repo-name>/`
 
 To run it, open the link above, or download `index.html` and open it in a browser.
 
