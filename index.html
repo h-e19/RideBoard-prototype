@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RideBoard Prototype</title>
+<style>
+  /* Layout: task runner | live phone | annotation notes. Grayscale wireframe, deliberately single (paper) theme. */
+  :root{
+    --ink:#222; --mid:#666; --soft:#9a9a9a; --line:#c4c4c4; --fill:#ececec; --fill2:#f6f6f6;
+    --page:#fafaf9; --paper:#ffffff; --dark:#3a3a3a; --ok:#2f6b3a; --warn:#8a5a12;
+    --ui:Arial,Helvetica,sans-serif; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box}
+  html,body{background:var(--page);color:var(--ink)}
+  body{margin:0;font-family:var(--ui);font-size:13px;line-height:1.4}
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #111;outline-offset:2px}
+  .wrap{max-width:1240px;margin:0 auto;padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  header.page h1{font-size:22px;margin:0 0 4px;text-wrap:balance}
+  header.page p{margin:2px 0;color:var(--mid);max-width:760px}
+  .layout{display:grid;grid-template-columns:280px 344px minmax(0,1fr);gap:24px;margin-top:20px;align-items:start}
+  @media (max-width:1020px){.layout{grid-template-columns:minmax(0,1fr) 344px}.notes{grid-column:1 / -1}}
+  @media (max-width:720px){.layout{grid-template-columns:minmax(0,1fr)}.stage{order:-1}}
+  .panel{background:var(--paper);border:1px dashed #cfcfcf;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+  .panel h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin:0;color:var(--mid)}
+  .task{border:1.5px solid var(--ink);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;background:#fff}
+  .task.on{background:var(--fill2);box-shadow:inset 3px 0 0 var(--ink)}
+  .task .tid{font-family:var(--mono);font-size:11px;color:var(--mid)}
+  .task p{margin:0}
+  .task .meta{font-size:11px;color:var(--mid)}
+  .runbar{font-family:var(--mono);font-size:12px;display:flex;gap:12px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .result{font-size:12px;border-radius:6px;padding:6px 8px;background:var(--fill)}
+  .result.ok{background:#e4efe5;color:var(--ok)}
+  .result.part{background:#f5ecdc;color:var(--warn)}
+  .pbtn{border:1.5px solid var(--ink);border-radius:6px;padding:5px 10px;font-size:12px;background:#fff;align-self:flex-start}
+  .pbtn.dark{background:var(--dark);color:#fff;border-color:var(--dark)}
+  .jump{display:flex;flex-direction:column;gap:2px}
+  .jump button{text-align:left;padding:5px 8px;border-radius:5px;font-size:12px}
+  .jump button:hover{background:var(--fill2)}
+  .jump button.cur{background:var(--fill);font-weight:bold}
+  .log{font-family:var(--mono);font-size:11px;display:flex;flex-direction:column;gap:3px;font-variant-numeric:tabular-nums}
+  .stage{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .role{font-size:11px;color:var(--mid);text-transform:uppercase;letter-spacing:.06em}
+  .helper{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .helper button{font-size:11px;color:var(--mid);border:1px dashed var(--soft);border-radius:12px;padding:3px 9px}
+  .switch{display:flex;align-items:center;gap:8px;font-size:12px}
+  .notes ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .notes li{display:flex;gap:8px;font-size:12.5px;max-width:65ch}
+  .notes li b.n{flex:none;width:20px;height:20px;border-radius:50%;background:#111;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center}
+  .notes em{color:var(--mid);font-style:normal;display:block;font-size:11.5px}
+  .notes h3{margin:0;font-size:15px}
+  .notes .ids{font-size:11px;color:var(--mid);font-family:var(--mono)}
+
+  /* ---------- phone ---------- */
+  .phone{position:relative;width:320px;max-width:100%;height:640px;border:2px solid var(--ink);border-radius:28px;padding:14px 10px 10px;background:#fff;display:flex;flex-direction:column;overflow:hidden}
+  .phone:before{content:"";display:block;width:70px;height:6px;border-radius:4px;background:var(--line);margin:0 auto 8px;flex:none}
+  .scr{flex:1;display:flex;flex-direction:column;min-height:0}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1.5px solid var(--ink);padding:4px 2px 8px;margin-bottom:8px;font-weight:bold;flex:none}
+  .bar small{font-weight:normal;color:var(--mid)}
+  .bar .sp{width:16px}
+  .content{flex:1;display:flex;flex-direction:column;gap:9px;overflow-y:auto;padding:9px 9px 6px;margin:-9px -9px 0;min-height:0}
+  .tabbar{display:flex;justify-content:space-around;border-top:1.5px solid var(--ink);padding-top:8px;margin-top:8px;font-size:11px;color:var(--mid);flex:none}
+  .tabbar button.on{color:var(--ink);font-weight:bold}
+  .card{border:1.5px solid var(--ink);border-radius:8px;padding:9px;position:relative;background:#fff;display:flex;flex-direction:column;gap:3px}
+  .card.soft{border-color:var(--soft);border-style:dashed}
+  .card.faded{opacity:.55}
+  .muted{color:var(--mid)} .tiny{font-size:11px}
+  .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .between{justify-content:space-between}
+  .btn{display:inline-block;border:1.5px solid var(--ink);border-radius:6px;padding:6px 10px;text-align:center;background:#fff;font-size:12px}
+  .btn.primary{background:var(--dark);color:#fff;border-color:var(--dark)}
+  .btn.block{display:block;width:100%}
+  .btn.done{border-style:dashed;color:var(--mid);cursor:default}
+  .btn:active{transform:translateY(1px)}
+  .link{text-decoration:underline;color:var(--mid);font-size:12px}
+  .chip{border:1.5px solid var(--ink);border-radius:14px;padding:3px 9px;font-size:11px;background:#fff}
+  .chip.on{background:var(--dark);color:#fff;border-color:var(--dark)}
+  .badge{border:1px solid var(--ink);border-radius:4px;padding:1px 6px;font-size:11px;background:var(--fill);white-space:nowrap}
+  .label{font-size:11px;color:var(--mid);margin-bottom:3px;display:block}
+  .selwrap{position:relative}
+  .selwrap:after{content:"▾";position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:12px}
+  select.field,input.field{appearance:none;-webkit-appearance:none;width:100%;border:1.5px solid var(--ink);border-radius:6px;padding:7px 26px 7px 9px;background:#fff;font:inherit;color:inherit}
+  input.amt{width:64px;border:0;border-bottom:1.5px solid var(--ink);font:inherit;padding:1px 2px;background:transparent}
+  input.amt:disabled{border-bottom-color:var(--line)}
+  .seg{display:flex;border:1.5px solid var(--ink);border-radius:6px;overflow:hidden}
+  .seg button{flex:1;text-align:center;padding:6px 4px;font-size:12px}
+  .seg button.on{background:var(--dark);color:#fff}
+  .tabs{display:flex;border-bottom:1.5px solid var(--line)}
+  .tabs button{flex:1;text-align:center;padding:6px;color:var(--mid)}
+  .tabs button.on{color:var(--ink);font-weight:bold;border-bottom:3px solid var(--ink);margin-bottom:-1.5px}
+  .avatar{width:30px;height:30px;border:1.5px solid var(--ink);border-radius:50%;flex:none;background:
+    linear-gradient(45deg,transparent 47%,var(--soft) 48%,var(--soft) 52%,transparent 53%),
+    linear-gradient(-45deg,transparent 47%,var(--soft) 48%,var(--soft) 52%,transparent 53%)}
+  .radio{display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;text-align:left;width:100%}
+  .radio i{width:13px;height:13px;border:1.5px solid var(--ink);border-radius:50%;display:inline-block;flex:none}
+  .radio.on i{background:radial-gradient(circle,var(--ink) 40%,transparent 45%)}
+  .toggle{width:32px;height:18px;border:1.5px solid var(--ink);border-radius:10px;position:relative;flex:none}
+  .toggle:after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--ink);transition:left .15s}
+  .toggle.on{background:var(--dark)}
+  .toggle.on:after{left:15px;background:#fff}
+  .stepper{display:flex;align-items:center;border:1.5px solid var(--ink);border-radius:6px;overflow:hidden;width:max-content}
+  .stepper button,.stepper span{padding:3px 10px}
+  .stepper span{border-left:1.5px solid var(--ink);border-right:1.5px solid var(--ink);min-width:30px;text-align:center}
+  .status{background:var(--fill);border-radius:6px;padding:6px 8px;font-size:12px;position:relative;margin-top:5px}
+  .dots{display:flex;gap:4px;margin-top:5px}
+  .dots i{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--ink);display:inline-block}
+  .dots i.o{background:var(--ink)}
+  .dots i.x{background:var(--soft);border-color:var(--soft)}
+  .dots i.p{background:repeating-linear-gradient(45deg,#fff 0 2px,var(--soft) 2px 3px)}
+  .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ink);margin-right:4px;animation:pl 1.2s infinite}
+  @keyframes pl{50%{opacity:.25}}
+  .empty{border:1.5px dashed var(--ink);border-radius:8px;padding:12px;text-align:center;display:flex;flex-direction:column;gap:8px;position:relative}
+  .sec{font-weight:bold;font-size:12px;margin-top:2px}
+  .note{font-size:11px;color:var(--mid);border-left:3px solid var(--line);padding-left:6px}
+  .err{font-size:11px;color:#9b1c1c}
+  .dim{position:absolute;inset:0;background:rgba(0,0,0,.3);z-index:20}
+  .modal{position:absolute;left:18px;right:18px;top:200px;background:#fff;border:2px solid var(--ink);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;z-index:21}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:2px solid var(--ink);border-radius:16px 16px 0 0;padding:12px 14px 16px;display:flex;flex-direction:column;gap:9px;z-index:21;max-height:85%;overflow-y:auto}
+  .sheet:before{content:"";width:40px;height:4px;border-radius:3px;background:var(--line);align-self:center}
+  .menu button{text-align:left;padding:8px 4px;border-bottom:1px solid var(--fill);font-size:13px}
+  .toast{position:absolute;left:14px;right:14px;bottom:52px;background:var(--dark);color:#fff;border-radius:8px;padding:8px 10px;font-size:12px;z-index:30}
+  .car{overflow:hidden;touch-action:pan-y;margin:0 -10px}
+  .track{display:flex;transition:transform .25s ease;user-select:none;-webkit-user-select:none;cursor:grab}
+  .track.drag{transition:none;cursor:grabbing}
+  .slide{flex:0 0 100%;padding:10px}
+  .carnav{display:flex;align-items:center;justify-content:space-between}
+  .carnav button{width:32px;height:32px;border:1.5px solid var(--ink);border-radius:50%;font-size:16px;line-height:1}
+  .carnav button:disabled{opacity:.3;cursor:default}
+  .cdots{display:flex;gap:6px}
+  .cdots i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink)}
+  .cdots i.on{background:var(--ink)}
+  @media (prefers-reduced-motion:reduce){.track{transition:none}}
+  /* WhatsApp */
+  .wa .bar{justify-content:flex-start}
+  .wa .bar .grow{flex:1}
+  .chat{flex:1;background:var(--fill2);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;min-height:0;
+    background-image:radial-gradient(#e2e2e2 1px,transparent 1px);background-size:12px 12px}
+  .b{max-width:84%;padding:6px 8px;border-radius:8px;border:1.2px solid var(--soft);background:#fff;font-size:12px;position:relative;align-self:flex-start}
+  .b.me{align-self:flex-end;background:#dcdcdc;border-color:#b0b0b0}
+  .b .t{display:block;text-align:right;font-size:9px;color:var(--soft);margin-top:2px}
+  .qr{display:flex;flex-direction:column;gap:4px;max-width:84%;position:relative}
+  .qr.h{flex-direction:row;flex-wrap:wrap}
+  .qr .btn{font-size:11.5px;padding:5px 8px;border-color:var(--mid)}
+  .qr .btn.on{background:var(--dark);color:#fff}
+  .sep{align-self:center;font-size:10px;color:var(--mid);background:#fff;border:1px solid var(--line);border-radius:8px;padding:1px 8px}
+  .typing{font-size:11px;color:var(--mid);font-style:italic}
+  .compose{display:flex;gap:6px;margin-top:8px;flex:none}
+  .compose .in{flex:1;border:1.5px solid var(--ink);border-radius:16px;padding:6px 10px;color:var(--soft)}
+  .compose .in.typed{color:var(--ink)}
+  .compose button{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--ink)}
+  .compose button.go{background:var(--dark);color:#fff}
+  /* markers */
+  .rel{position:relative}
+  .mk{position:absolute;top:-9px;right:-9px;width:20px;height:20px;border-radius:50%;background:#111;color:#fff;font-size:11px;font-weight:bold;display:flex;align-items:center;justify-content:center;z-index:5;box-shadow:0 0 0 2px #fff;pointer-events:none}
+  .mk.l{right:auto;left:-9px}
+  .nomk .mk{display:none}
+  @media (prefers-reduced-motion:reduce){.pulse{animation:none}.toggle:after{transition:none}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>RideBoard: clickable prototype</h1>
+    <p>Phase 2 wireframes, wired up. Everything on the phone responds: run a Phase 3 task on the left, or jump to any of the 10 screens. Numbered markers map elements to requirements; the notes on the right follow whatever screen is showing.</p>
+  </header>
+  <div class="layout">
+    <aside class="panel" id="tasks"></aside>
+    <div class="stage">
+      <div class="role" id="role"></div>
+      <div class="phone" id="phone"></div>
+      <div class="helper" id="helper"></div>
+    </div>
+    <aside class="panel notes" id="notes"></aside>
+  </div>
+</div>
+
+<script>
+/* ---------------- data ---------------- */
+const PLACES=['Main campus','City campus','Gulshan-e-Iqbal','Gulistan-e-Jauhar','DHA','Clifton','North Nazimabad','PECHS'];
+const AREAS=['Main','City','Gulshan','Jauhar','DHA','Clifton','North Naz','PECHS','Johar Mor','NIPA'];
+const WINS=['6–7 pm','7–8 pm','8–9 pm'];
+const TIMES=['8:00 am','2:00 pm','4:00 pm','5:00 pm','5:30 pm','6:00 pm','7:00 pm'];
+const DAYS=['Mon','Tue','Wed','Thu','Fri'];
+const short=p=>({'Gulshan-e-Iqbal':'Gulshan','Gulistan-e-Jauhar':'Jauhar','North Nazimabad':'North Naz'}[p]||p);
+const offerTime=r=>r.mode==='whenever'?'7:40 pm':({'6–7 pm':'6:40 pm','7–8 pm':'7:40 pm','8–9 pm':'8:20 pm'}[r.win]||'7:40 pm');
+const fareTxt=r=>r.fare==='favour'?'Free · favour':'Rs '+(r.fareAmt||'—');
+
+const TODAY=[
+  {id:'t1',campus:'Main',to:'Jauhar',via:['Gulshan'],sub:'Car',time:'5:30 pm',eve:true,fare:'Free · favour',seats:2},
+  {id:'t2',campus:'Main',to:'Gulshan',via:[],sub:'Shared Yango',time:'6:15 pm',eve:true,fare:'Rs 200',seats:1},
+  {id:'t3',campus:'Main',to:'Gulshan',via:[],sub:'Car',time:'2:10 pm',eve:false,fare:'Free · favour',seats:3},
+  {id:'t4',campus:'City',to:'Gulshan',via:[],sub:'Car',time:'5:00 pm',eve:true,fare:'Rs 150',seats:2},
+  {id:'t5',campus:'Main',to:'DHA',via:[],sub:'Car',time:'6:00 pm',eve:true,fare:'Free · favour',seats:1}
+];
+const NEEDED=[
+  {id:'n1',name:'Hania',campus:'Main',to:'Gulshan',via:[],when:'Whenever',posted:'4 min ago',eve:true,seats:1},
+  {id:'n3',name:'Sana',campus:'Main',to:'Gulshan',via:[],when:'Between 5–6 pm',posted:'20 min ago',eve:true,seats:2},
+  {id:'n4',name:'Iqra',campus:'Main',to:'Gulshan',via:[],when:'Between 2–3 pm',posted:'35 min ago',eve:false,seats:1},
+  {id:'n2',name:'Areeba',campus:'Main',to:'Jauhar',via:[],when:'Between 6–7 pm',posted:'12 min ago',eve:true,seats:1},
+  {id:'n5',name:'Rida',campus:'City',to:'Gulshan',via:[],when:'Between 5–6 pm',posted:'8 min ago',eve:true,seats:1}
+];
+const REGULAR=[
+  {id:'r3',campus:'Main',to:'Gulshan',via:[],days:['Mon','Tue','Thu'],time:'~3:30 pm',eve:false,fare:'Free · favour',seats:1},
+  {id:'r1',campus:'Main',to:'Jauhar',via:['Gulshan'],days:['Mon','Wed'],time:'~5:30 pm',eve:true,fare:'Rs 200',seats:2},
+  {id:'r2',campus:'Main',to:'DHA',via:[],days:['Tue','Thu'],time:'~4:00 pm',eve:false,fare:'Free · favour',seats:2},
+  {id:'r4',campus:'City',to:'Gulshan',via:[],days:['Wed','Fri'],time:'~5:00 pm',eve:true,fare:'Rs 150',seats:1}
+];
+
+/* ---------------- chats ---------------- */
+const CHATS={
+ s7:{who:'Zainab · driver · WhatsApp',nodes:{
+  start:{bot:[{h:"Hi! I'm RideBoard 🚗 I'll ping you when someone near you needs a ride. What's your name?",t:'7:02'}],type:'Zainab',to:'email',set:{name:'Zainab'}},
+  email:{bot:[{h:"Your IBA email? I'll send a code to verify you're a student.",t:'7:02'}],type:'z.khan@khi.iba.edu.pk',to:'code'},
+  code:{bot:[{h:'Sent a 6-digit code to z.khan@khi.iba.edu.pk. Type it here.',t:'7:03'}],type:'482913',to:'area'},
+  area:{bot:[{h:'✓ Verified. Which area do you live in?',t:'7:04'}],mk:1,replies:[['Gulshan','via',{home:'Gulshan'}],['Jauhar','via',{home:'Jauhar'}],['DHA','via',{home:'DHA'}],['More…','area2']]},
+  area2:{bot:[{h:'A few more:',t:'7:04'}],replies:[['Clifton','via',{home:'Clifton'}],['North Naz','via',{home:'North Naz'}],['PECHS','via',{home:'PECHS'}]]},
+  via:{bot:[{h:'Any areas you pass through on the way? Tap all that apply. I\'ll ping you for those too.',t:'7:04',mk:2}],multi:['Gulshan','Johar Mor','NIPA','Saddar'],to:'done'},
+  done:{bot:v=>[{h:`All set, ${v.name||'Zainab'}. You'll get pings for rides to or from ${v.home||'your area'}${v.via&&v.via.length?' and '+v.via.join(', '):''}. Reply PAUSE any time to stop pings for today.`,t:'7:05'}]}
+ }},
+ s8:{who:'Zainab · driver · WhatsApp',nodes:{
+  start:{bot:[{h:'🚗 <b>Mahnoor needs a ride</b><br>Main campus → Gulshan<br>Between 7–8 pm<br><span class="muted">✓ IBA verified · 2 rides together</span>',t:'6:46',mk:1}],mk:2,col:true,
+    replies:[['Yes, leaving at…','time'],["Can't",'cant'],['See details',null,null,'profile']]},
+  time:{bot:[{h:'What time are you leaving?',t:'6:47'}],replies:[['7:15','fare',{time:'7:15'}],['7:40','fare',{time:'7:40'}],['8:00','fare',{time:'8:00'}]]},
+  fare:{bot:[{h:'Ask for a fare?',t:'6:47',mk:3}],replies:[["No, it's a favour ✓",'sent',{fare:'favour'}],['Yes, Rs…','amt']]},
+  amt:{bot:[{h:'How much per seat?',t:'6:47'}],replies:[['Rs 100','sent',{fare:'Rs 100'}],['Rs 150','sent',{fare:'Rs 150'}],['Rs 200','sent',{fare:'Rs 200'}]]},
+  sent:{bot:v=>[{h:`✅ Offer sent: leaving ${v.time}, ${v.fare==='favour'?'free (favour)':v.fare+' per seat'}. I'll tell you when Mahnoor accepts.`,t:'6:47'}],event:'offerSent',auto:['accepted',2200]},
+  accepted:{bot:[{h:'🎉 Mahnoor accepted! Her number: 03xx-xxxxxxx<br><span class="muted">Message her to sort out pickup.</span>',t:'6:49',mk:4}]},
+  cant:{bot:[{h:"No problem. Mahnoor's status now shows you can't make it. I won't ping you about this one again.",t:'6:47'}]}
+ }},
+ s9:{who:'Mahnoor · rider · WhatsApp',nodes:{
+  start:{bot:[{sep:'Today 7:30 am'},{h:'⚠️ Sara cancelled your 8:00 am ride (Gulshan → Main). Want me to find another one?',t:'7:30',mk:1}],replies:[['Yes, leave by 8:15','ping'],['No thanks','no']]},
+  ping:{bot:[{h:'Pinging 5 drivers near Gulshan… <span class="link">See status</span>',t:'7:30'}],auto:['offer',2000]},
+  offer:{bot:[{h:'Zainab can take you at 8:00 · Free · favour<br><span class="muted">✓ IBA verified · 2 rides together</span>',t:'7:34'}],replies:[['Accept','acc'],['Decline','dec']]},
+  acc:{bot:[{h:"🎉 Confirmed. Zainab's number: 03xx-xxxxxxx",t:'7:34'}],auto:['follow',1800]},
+  follow:{bot:[{sep:'Today 9:10 am'},{h:'Did your ride with Zainab happen?',t:'9:10',mk:2}],replies:[['Yes 👍','fb'],['No','fbno']]},
+  fb:{bot:[{h:'Thanks! Marked as done. That keeps the board accurate.',t:'9:10'}]},
+  fbno:{bot:[{h:"Sorry about that. I've noted it. Want me to find you a ride home later today?",t:'9:11'}],replies:[['Yes','start2'],['No thanks','no']]},
+  start2:{bot:[{h:'Okay. Open RideBoard when you know your time and I\'ll ping drivers.',t:'9:11'}]},
+  dec:{bot:[{h:'Okay, Zainab is told. Still waiting on the other 4 drivers…',t:'7:35'}],auto:['offer2',2400]},
+  offer2:{bot:[{h:'Hira can take you at 8:10 · Rs 150<br><span class="muted">✓ IBA verified</span>',t:'7:39'}],replies:[['Accept','acc2'],['Decline','no']]},
+  acc2:{bot:[{h:"🎉 Confirmed. Hira's number: 03xx-xxxxxxx",t:'7:39'}]},
+  no:{bot:[{h:"Okay, I've closed the request. The drivers I pinged have been told.",t:'7:31'}]}
+ }}
+};
+
+/* ---------------- annotations ---------------- */
+const ANN={
+ 's1':{t:'Screen 1 · Home: my requests',ids:'F9, I1, I5, I10',items:[
+  ['Live status line on each request: who was pinged, offered, declined, pending.','Visibility of system status (I1)'],
+  ['Offers stay folded behind one button that says how many are waiting, so several requests fit on Home at once.','Progressive disclosure (I10)'],
+  ['Edit or cancel without starting over.','User control & freedom (I5)']]},
+ 'offers':{t:'Screen 1 · Offers popup',ids:'F9, I1, I9, I10',items:[
+  ['Offers are compared one at a time. The counter, dots and arrows show how many there are; swipe or tap the arrows to move.','Visibility of system status (I1)'],
+  ['Fare badge shown before accepting, never after.','Error prevention (I9)'],
+  ["The ride is confirmed only when the rider accepts a driver's proposed time.",'User control & freedom (F9)'],
+  ['One trust signal per driver.','Progressive disclosure (I10)'],
+  ['Accepting one offer declines the rest, and those drivers are told.','Feedback; Error prevention']]},
+ 'pending':{t:'Screen 1 · Request status (waiting)',ids:'I1, I5',items:[
+  ['The status line updates live as drivers decline or offer.','Visibility of system status (I1)'],
+  ['Edit or cancel without starting over.','User control & freedom (I5)']]},
+ 's2':{t:'Screen 2 · Request status (no match yet)',ids:'F6, I1',items:[
+  ['A dead end becomes a shared ride.','Help users recover from errors (F6)'],
+  ['Fallback to the familiar channel.','Match with the real world (F6, F7)'],
+  ['The rider decides when to give up, not the system.','User control & freedom']]},
+ 'confirmed':{t:'Screen 1 · Ride confirmed',ids:'I7, F13',items:[
+  ['Numbers are shared only now, after the rider accepted.','Privacy by design (I7)'],
+  ['A one-tap follow-up will arrive on WhatsApp after departure.','Feedback (F13)']]},
+ 'shared':{t:'Screen 2 · Shared ride posted',ids:'F6, I9',items:[
+  ['The rider\'s own booking now sits on the board with the split fare shown.','Help users recover from errors (F6); Visibility (I9)']]},
+ 'home-empty':{t:'Home · no active request',ids:'—',items:[]},
+ 's3':{t:'Screen 3 · New request',ids:'F8, F10, I2, I4',items:[
+  ['Campus pre-filled from last use.','Efficiency of use (I2)'],
+  ['Area list uses the names students already say ("Gulshan", "Main").','Match with the real world (I4)'],
+  ['Time window or "whenever", because most plans are ad hoc.','Flexibility (F8)'],
+  ['Says what will happen next.','Visibility (F10)']]},
+ 's4':{t:'Screen 4 · Ride board: Find a seat',ids:'F2, F3, F11, I3, I9',items:[
+  ['The board splits by what you came to do: find a seat or give a ride. Each side shows how many match your route.','Match with the real world; Visibility of system status'],
+  ['Filter chips update the list instantly, apply to both sides, and remember your last route.','Recognition over recall (F2, I3)'],
+  ['"Today" one-off rides vs "Regular" schedules. Only offers have this split.','Consistency (F11)'],
+  ['Seats left and fare on every card.','Visibility of status (F3, I9)']]},
+ 's4g':{t:'Screen 4 · Ride board: Give a ride',ids:'F1, F2, F12, I3',items:[
+  ['The board splits by what you came to do: find a seat or give a ride. Each side shows how many match your route.','Match with the real world; Visibility of system status'],
+  ['Same filters as the other side, so switching keeps your route.','Recognition over recall (F2, I3)'],
+  ['Requests stay listed until filled or expired, with how long ago each was posted.','Visibility (F1)'],
+  ['"I can take her" opens a short offer: leaving time from her window, and fare with favour pre-selected.','Defaults as a gentle nudge (F12)']]},
+ 's5':{t:'Screen 5 · Post a ride',ids:'F5, F11, F12, I2, I7, I8',items:[
+  ['Weekly schedule set once, not retyped every week.','Efficiency of use (F5, F11)'],
+  ['Favour is pre-selected; a fare is optional.','Defaults as a gentle nudge (F12)'],
+  ['Driver controls who sees the listing.','User control (I8)'],
+  ['No street address or live location.','Privacy by design (I7)']]},
+ 's6':{t:'Screen 6 · My rides (Driving)',ids:'F4, I5',items:[
+  ['Cancelling needs a confirmation step, and the rider is notified immediately.','Error prevention + feedback (F4, I5)'],
+  ['Driving and Riding are two views of one account, because the same student can do both.','Visibility of system status; Match with the real world']]},
+ 's6r':{t:'Screen 6 · My rides (Riding)',ids:'I1, I5',items:[
+  ['Driving and Riding are two views of one account, because the same student can do both.','Visibility of system status; Match with the real world'],
+  ['Every seat says its state in words: requested, confirmed or skipped, and can be dropped in one tap.','Visibility of system status (I1); User control (I5)']]},
+ 's7':{t:'Screen 7 · WhatsApp sign-up',ids:'F7, F10',items:[
+  ['Tap-to-answer area list, no typing.','Recognition over recall (I4)'],
+  ['Home area + route areas, so drivers passing through also get pinged.','Relevant notifications only (F10)']]},
+ 's8':{t:'Screen 8 · WhatsApp ping → driver offer',ids:'F9, F12, I6, I7, I10',items:[
+  ['Enough to decide on the spot: route, time, name, one trust signal.','Progressive disclosure (I10)'],
+  ['One-tap replies, no app needed.','Efficiency of use (I6)'],
+  ['Fare question defaults to favour.','Defaults as a nudge (F12)'],
+  ['Contacts are shared only after the rider accepts.','Privacy by design (I7)']]},
+ 's9':{t:'Screen 9 · WhatsApp rider updates',ids:'F4, F6, F13',items:[
+  ['The cancellation is pushed immediately, with a next step attached.','Feedback + error recovery (F4, F6)'],
+  ['One-tap follow-up closes the loop and keeps the board accurate.','Feedback (F13)']]},
+ 's10':{t:'Screen 10 · Settings',ids:'F10, I6, I8',items:[
+  ['Matching areas can be edited any time.','User control (F10)'],
+  ['Audience setting, same wording as on Screen 5.','Consistency (I8)'],
+  ['Drivers can stop interruptions.','User control & freedom (I6)']]},
+ 'profile':{t:'Rider profile (from "See details")',ids:'I10',items:[
+  ['Optional detail behind the one trust signal in the ping.','Progressive disclosure (I10)']]}
+};
+
+/* ---------------- tasks (Phase 3 plan) ---------------- */
+const TASKS=[
+ {id:'T1',text:'Request a ride home between 7 and 8 pm and accept the offer you receive.',start:'s3',tests:'F8, F9, I1, I2',
+  check:(e,d)=>e==='acceptOffer'?(d.win==='7–8 pm'&&d.mode==='between'?'ok':'part:accepted, but the window was '+(d.mode==='whenever'?'"whenever"':d.win)):null},
+ {id:'T2',text:'No driver has replied. Find out what you can do.',start:'s2',tests:'F6, I1',
+  check:(e,d)=>e==='fallback'?'ok:chose "'+d+'"':null},
+ {id:'T3',text:'Find a regular Wednesday ride to Gulshan and request a seat.',start:'s4',tests:'F2, F11, I3, I9',
+  check:(e,d)=>e==='seatRequest'?((REGULAR.find(r=>r.id===d.id)||{}).days?.includes('Wed')&&d.day==='Wed'&&d.regular?'ok':'part:requested a seat, but not a regular Wednesday ride'):null},
+ {id:'T4',text:'As a driver, answer a ping: leave at 7:40 as a favour.',start:'s8',tests:'F9, F12, I6, I10 · target ≤ 3 taps',
+  check:(e,d)=>e==='offerSent'?(d.time==='7:40'&&d.fare==='favour'?'ok':'part:offer sent with '+d.time+', '+(d.fare==='favour'?'favour':d.fare)):null},
+ {id:'T5',text:'Post a weekly Mon/Wed ride visible to women only.',start:'s5',tests:'F5, F11, F12, I7, I8',
+  check:(e,d)=>e==='posted'?(d.type==='regular'&&d.days.join()==='Mon,Wed'&&d.aud==='women'?'ok':'part:posted, but '+[d.type!=='regular'?'not regular':'',d.days.join()!=='Mon,Wed'?'days were '+(d.days.join('/')||'none'):'',d.aud!=='women'?'audience was '+AUD[d.aud]:''].filter(Boolean).join('; ')):null},
+ {id:'T6',text:'Cancel a ride you offered.',start:'s6',tests:'F4, I5',
+  check:(e)=>e==='cancelRide'?'ok':null}
+];
+const AUD={women:'Women only',all:'All IBA',past:"People I've ridden with"};
+
+/* ---------------- state ---------------- */
+let S, timers=[], tick=null, lastKey='';
+function later(ms,fn){timers.push(setTimeout(fn,ms))}
+function fresh(){
+  timers.forEach(clearTimeout); timers=[];
+  return {
+    screen:'home', sheet:null, modal:null, toast:null, mk:true, editing:false, err:null,
+    reqs:[reqOffer(),reqTomorrow()],
+    draft:{from:'Main campus',to:'Gulshan-e-Iqbal',mode:'between',win:'7–8 pm',seats:1},
+    board:{side:'seat',tab:'today',campus:'Main',area:'Gulshan',eve:false,requested:{},offered:{},shared:null},
+    post:defaultPost(),
+    rides:[{id:'m1',type:'regular',days:['Mon','Wed'],from:'Main',to:'Jauhar',via:['Gulshan'],time:'5:30 pm',seats:2,taken:1,fare:'favour',fareAmt:'',aud:'women',paused:false,cancelled:[]}],
+    offerCard:'waiting', seatReq:'pending', myTab:'driving', seatSkip:false,
+    settings:{home:'Jauhar',via:['Gulshan'],campus:'Main',aud:'women',pause:false,quiet:true,follow:true},
+    chat:{s7:newChat(),s8:newChat(),s9:newChat()},
+    task:null, results:[]
+  };
+}
+function defaultPost(){return {type:'regular',days:['Mon','Wed'],from:'Main',to:'Jauhar',via:['Gulshan'],time:'5:30 pm',seats:2,fare:'favour',fareAmt:'',aud:'women',editId:null}}
+function newChat(){return {log:[],node:null,vars:{},sel:[],waiting:false}}
+let RID=10;
+const OFF=(name,time,fare,pickup,trust)=>({id:'o'+(++RID),name,time,fare,pickup,trust});
+function reqOffer(){return {id:'q1',day:'Today',from:'Main campus',to:'Gulshan-e-Iqbal',mode:'between',win:'7–8 pm',seats:1,status:'offer',pinged:5,declined:1,n:0,
+  offers:[OFF('Zainab','7:40 pm','Free · favour','Main gate','✓ IBA verified · 2 rides together'),OFF('Hira','7:15 pm','Rs 150','Main gate','✓ IBA verified'),OFF('Sara','8:00 pm','Free · favour','Gate 2','✓ IBA verified · rode together once')]}}
+function reqTomorrow(){return {id:'q2',day:'Tomorrow',from:'Gulshan-e-Iqbal',to:'Main campus',mode:'between',win:'8–9 am',seats:1,status:'offer',pinged:3,declined:0,n:0,
+  offers:[OFF('Zainab','8:10 am','Free · favour','Gulshan Chowrangi','✓ IBA verified · 2 rides together')]}}
+function reqNomatch(){return {id:'q3',day:'Today',from:'Main campus',to:'Gulshan-e-Iqbal',mode:'between',win:'6–7 pm',seats:1,status:'nomatch',pinged:3,declined:1,n:0,offers:[]}}
+const reqById=id=>S.reqs.find(r=>r.id===id);
+
+/* ---------------- helpers ---------------- */
+const mk=(n,c='')=>`<span class="mk ${c}" aria-hidden="true">${n}</span>`;
+const A=(act,arg)=>`data-act="${act}"${arg!==undefined?` data-arg="${String(arg).replace(/"/g,'&quot;')}"`:''}`;
+const sel=(id,act,opts,val)=>`<div class="selwrap"><select class="field" id="${id}" ${A(act)}>${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select></div>`;
+const chip=(label,on,act,arg)=>`<button class="chip${on?' on':''}" ${A(act,arg)} aria-pressed="${!!on}">${label}</button>`;
+const radio=(label,on,act,arg)=>`<button class="radio${on?' on':''}" ${A(act,arg)} role="radio" aria-checked="${!!on}"><i></i>${label}</button>`;
+const toggle=(on,act,label)=>`<button class="toggle${on?' on':''}" ${A(act)} role="switch" aria-checked="${!!on}" aria-label="${label}"></button>`;
+function toast(msg){S.toast=msg;const me=msg;later(2800,()=>{if(S.toast===me){S.toast=null;render()}})}
+function tabbar(on){return `<div class="tabbar">${[['home','Home'],['s4','Board'],['s5','Post'],['s6','My rides']].map(([k,l])=>`<button class="${on===k?'on':''}" ${A('tab',k)}>${l}</button>`).join('')}</div>`}
+function appBar(right){return `<div class="bar"><button ${A('menu')}>☰ RideBoard</button>${right}</div>`}
+function closeBar(title,back='home'){return `<div class="bar"><button ${A('go',back)} aria-label="Close">✕</button><span>${title}</span><span class="sp"></span></div>`}
+
+/* ---------------- views ---------------- */
+function statusLine(r,withMk){
+  const off=(r.offers||[]).length, pend=r.pinged-r.declined-off;
+  const parts=[`Pinged ${r.pinged}`];
+  if(off) parts.push(`${off} offer${off>1?'s':''}`);
+  parts.push(`${r.declined} declined`,`${pend} pending`);
+  const dots=[...Array(off).fill('o'),...Array(r.declined).fill('x'),...Array(pend).fill('p')];
+  return `<div class="status rel" role="status">${withMk?mk(1):''}${r.status==='pending'?'<span class="pulse"></span>':'● '}${parts.join(' · ')}<div class="dots">${dots.map(c=>`<i class="${c}"></i>`).join('')}</div></div>`;
+}
+function reqCard(r,badge,first){
+  const M=n=>first?mk(n):'';
+  const when=(r.day&&r.day!=='Today'?r.day+' · ':'')+(r.mode==='whenever'?'Whenever, just get me home':'Between '+r.win);
+  const live=r.status==='pending'||r.status==='offer';
+  let foot='';
+  if(r.status==='pending') foot=`<div class="tiny muted">Waiting for drivers. Most reply within 10 minutes, and you'll get a WhatsApp message when an offer arrives.</div>`;
+  else if(r.status==='offer') foot=`<div class="rel"><button class="btn primary block" ${A('openOffers',r.id)}>See ${r.offers.length} offer${r.offers.length>1?'s':''}</button>${M(2)}</div>`;
+  else if(r.status==='nomatch') foot=`<div class="empty" style="padding:10px"><b>No driver yet</b><span class="muted tiny">Drivers usually reply within 10 minutes. Here's what you can do:</span>
+      <div class="rel"><button class="btn primary block" ${A('shareSheet',r.id)}>Booking a ride anyway? Offer the empty seats</button>${M(1)}</div>
+      <div class="rel"><button class="btn block" ${A('postGroup',r.id)}>Post to the WhatsApp group</button>${M(2)}</div>
+      <div class="rel" style="align-self:center"><button class="link" ${A('keepWaiting',r.id)}>Keep waiting</button>${M(3)}</div></div>`;
+  else if(r.status==='confirmed'){const o=r.confirmed;foot=`<div class="row"><div class="avatar"></div><div><b>${o.name}</b> · leaving <b>${o.time}</b><div class="tiny muted">Pickup: ${o.pickup} · <span class="badge">${o.fare}</span></div></div></div>
+      <div class="status rel">${M(1)}${o.name}'s number: <b>03xx-xxxxxxx</b><br><span class="tiny muted">She has yours too.</span></div>
+      <div class="row between"><button class="btn" ${A('msgDriver',o.name)}>Message ${o.name}</button><button class="link" ${A('clearReq',r.id)}>Done with this request</button></div>
+      <div class="note rel">${M(2)}After the ride, we'll ask on WhatsApp whether it happened. One tap.</div>`}
+  else if(r.status==='shared'){const s=r.shared;foot=`<div class="status rel">${M(1)}<b>Your ${s.app} is on the board.</b> ${s.seats} seat${s.seats>1?'s':''} at <span class="badge">Rs ${Math.round(s.total/(s.seats+1))} per seat</span><br><span class="tiny muted">Split ${s.seats+1} ways from Rs ${s.total}. You'll get a WhatsApp message when someone requests a seat.</span></div>
+      <div class="row between"><button class="btn" ${A('tab','s4')}>See it on the board</button><button class="link" ${A('clearReq',r.id)}>Close request</button></div>`}
+  const links=live?`<div class="row rel" style="justify-content:center;gap:16px"><button class="link" ${A('editReq',r.id)}>Edit request</button><button class="link" ${A('askCancelReq',r.id)}>Cancel request</button>${M(r.status==='offer'?3:2)}</div>`:'';
+  const status=live?statusLine(r,first):(r.status==='nomatch'?statusLine(r,false):'');
+  return `<div class="card" style="gap:6px"><div class="row between"><b>${r.from} → ${short(r.to)}</b><span class="badge">${badge}</span></div>
+    <div class="muted tiny" style="margin-top:-4px">${when} · ${r.seats} seat${r.seats>1?'s':''}</div>${status}${foot}${links}</div>`;
+}
+function vHome(){
+  const L=S.reqs;
+  let body;
+  if(!L.length) body=`<div class="empty" style="margin-top:40px"><b>No active request</b><span class="muted tiny">Tell us where you're going and we'll ping drivers on your route.</span>
+      <button class="btn primary block" ${A('newReq')}>Need a ride</button><button class="link" ${A('tab','s4')}>Browse the ride board</button></div>`;
+  else body=`<div class="row between"><span class="sec">My requests (${L.length})</span><button class="link" ${A('newReq')}>+ New request</button></div>`
+    +L.map((r,i)=>reqCard(r,{pending:'Active',offer:'Active',nomatch:'10 min',confirmed:'Confirmed',shared:'Shared'}[r.status],i===0)).join('')
+    +(L.some(r=>r.status==='offer')?`<div class="note">Your number is shared with a driver only after you accept their offer.</div>`:'');
+  return `<div class="scr">${appBar('<small>My requests</small>')}<div class="content">${body}</div>${tabbar('home')}</div>`;
+}
+function vNew(){
+  const d=S.draft;
+  return `<div class="scr">${closeBar(S.editing?'Edit request':'Need a ride')}<div class="content">
+    <div class="rel"><label class="label" for="f-from">From</label>${sel('f-from','dFrom',PLACES,d.from)}${mk(1)}</div>
+    <button class="muted" style="align-self:center" ${A('swap')} aria-label="Swap from and to">⇅ swap</button>
+    <div class="rel"><label class="label" for="f-to">To</label>${sel('f-to','dTo',PLACES,d.to)}${mk(2)}</div>
+    <div class="rel"><div class="label">When?</div><div class="seg">
+      <button class="${d.mode==='between'?'on':''}" ${A('dMode','between')}>Between…</button>
+      <button class="${d.mode==='whenever'?'on':''}" ${A('dMode','whenever')}>Whenever, just get me home</button></div>${mk(3)}</div>
+    ${d.mode==='between'?`<div class="row">${WINS.map(w=>chip(w,d.win===w,'dWin',w)).join('')}${chip('Other…',false,'otherTime')}</div>`:''}
+    <div class="row between"><span>Seats needed</span><div class="stepper"><button ${A('dSeats',-1)} aria-label="Fewer">–</button><span>${d.seats}</span><button ${A('dSeats',1)} aria-label="More">+</button></div></div>
+    <div class="note rel">We'll ping drivers who live in or pass through ${short(d.from.includes('campus')?d.to:d.from)}.${mk(4)}</div>
+    ${S.err?`<div class="err">${S.err}</div>`:''}
+    <div style="flex:1"></div>
+    <button class="btn primary block" ${A('findRide')}>${S.editing?'Update request':'Find a ride'}</button>
+  </div></div>`;
+}
+function offerTimes(c){
+  const m=/(\d+)–(\d+) (am|pm)/.exec(c.when);
+  return m?[`${m[1]}:00 ${m[3]}`,`${m[1]}:30 ${m[3]}`,`${m[2]}:00 ${m[3]}`]:['6:30 pm','7:00 pm','7:40 pm'];
+}
+function matchCard(c){
+  const b=S.board;
+  if(c.campus!==b.campus) return false;
+  if(b.area && c.to!==b.area && !c.via.includes(b.area)) return false;
+  if(b.eve && !c.eve) return false;
+  return true;
+}
+function vBoard(){
+  const b=S.board, isT=b.tab==='today', give=b.side==='give';
+  const list=(isT?TODAY:REGULAR).filter(matchCard);
+  const showShared=isT&&b.shared&&b.campus==='Main';
+  const needs=NEEDED.filter(matchCard);
+  const nSeat=list.length+(showShared?1:0);
+  let cards='';
+  if(!give){
+    if(showShared){
+      cards+=`<div class="card"><div class="row between"><b>Main → ${short(b.shared.to||'Gulshan')}</b><span class="badge">Rs ${Math.round(b.shared.total/(b.shared.seats+1))}</span></div>
+        <div class="tiny muted">Your shared ${b.shared.app} · leaves 6:30 pm</div><div class="row between" style="margin-top:6px"><span class="tiny"><b>${b.shared.seats} seats left</b></span><span class="btn done">Your ride</span></div></div>`;
+    }
+    list.forEach((c,i)=>{
+      const req=b.requested[c.id];
+      const head=isT?`<b>${c.campus} → ${c.to}</b>`:`<div class="tiny muted">REGULAR · ${c.days.join(', ').toUpperCase()}</div><b>${c.campus} → ${c.to}</b>`;
+      const sub=isT?`${c.sub} · leaves ${c.time}`:`${c.via.length?'via '+c.via.join(', ')+' · ':''}${c.time}`;
+      cards+=`<div class="card">${isT?`<div class="row between">${head}<span class="badge">${c.fare}</span></div>`:`<div class="row between"><div>${head}</div><span class="badge">${c.fare}</span></div>`}
+        <div class="tiny muted">${isT&&c.via.length?'via '+c.via.join(', ')+' · ':''}${sub}</div>
+        <div class="row between rel" style="margin-top:6px"><span class="tiny"><b>${c.seats} seat${c.seats>1?'s':''} left</b></span>
+        ${req?`<span class="btn done">Requested${req!==true?' · '+req:''}</span>`:`<button class="btn primary" ${A('seatSheet',c.id)}>Request a seat</button>`}${i===0?mk(4):''}</div></div>`;
+    });
+    if(!cards) cards=`<div class="empty"><b>No seats on this route yet</b><span class="tiny muted">Try removing a filter, or post a request and we'll ping drivers for you.</span><button class="btn" ${A('newReq')}>Need a ride</button></div>`;
+  } else {
+    needs.forEach((c,i)=>{
+      const sent=b.offered[c.id];
+      cards+=`<div class="card">${i===0?mk(3,'l'):''}<div class="row between rel"><b>${c.campus} → ${c.to}</b><span class="tiny muted">posted ${c.posted}</span></div>
+        <div class="tiny muted">${c.when} · ${c.seats} seat${c.seats>1?'s':''}</div>
+        <div class="row between rel" style="margin-top:6px"><span class="tiny"><b>${c.name}</b> · ✓ IBA verified</span>
+        ${sent?`<span class="btn done">Offer sent · ${sent}</span>`:`<button class="btn primary" ${A('offerSheet',c.id)}>I can take her</button>`}${i===0?mk(4):''}</div></div>`;
+    });
+    if(!cards) cards=`<div class="empty"><b>No one on this route needs a ride</b><span class="tiny muted">We'll ping you on WhatsApp when someone near your route asks.</span><button class="btn" ${A('tab','s5')}>Post a ride instead</button></div>`;
+  }
+  return `<div class="scr">${appBar(`<button class="btn" style="padding:3px 8px" ${A('tab','s5')}>+ Post</button>`)}<div class="content">
+    <div class="rel"><div class="seg"><button class="${!give?'on':''}" ${A('bSide','seat')}>Find a seat (${nSeat})</button><button class="${give?'on':''}" ${A('bSide','give')}>Give a ride (${needs.length})</button></div>${mk(1)}</div>
+    <div class="row rel">${chip(b.campus+' ▾',true,'bCampus')}${b.area?chip(b.area+' ✕',true,'bArea'):chip('+ Area',false,'bArea')}${chip('Evening',b.eve,'bEve')}${chip('+ Filter',false,'moreFilter')}${mk(2)}</div>
+    <div class="tiny muted">${b.campus==='Main'&&b.area==='Gulshan'?'Saved as your usual route':'Showing '+b.campus+(b.area?' ↔ '+b.area:'')}</div>
+    ${give?'':`<div class="tabs rel"><button class="${isT?'on':''}" ${A('bTab','today')}>Today</button><button class="${!isT?'on':''}" ${A('bTab','regular')}>Regular</button>${mk(3)}</div>`}
+    ${cards}
+    <div class="note">${give?"Students asking for a ride. Requests disappear once they're filled or the time window passes.":'No phone numbers on the board. Rides disappear after they leave.'}</div>
+  </div>${tabbar('s4')}</div>`;
+}
+function vPost(){
+  const p=S.post, reg=p.type==='regular';
+  return `<div class="scr">${closeBar(p.editId?'Edit ride':'Post a ride','s6')}<div class="content">
+    <div class="rel"><div class="seg"><button class="${!reg?'on':''}" ${A('pType','oneoff')}>One-off</button><button class="${reg?'on':''}" ${A('pType','regular')}>Regular</button></div>${mk(1)}</div>
+    ${reg?`<div class="row">${DAYS.map(d=>chip(d,p.days.includes(d),'pDay',d)).join('')}</div>`:`<div class="tiny muted">Today only. It disappears from the board after you leave.</div>`}
+    <div class="row" style="flex-wrap:nowrap"><div style="flex:1;min-width:0"><label class="label" for="p-from">From</label>${sel('p-from','pFrom',AREAS.slice(0,8),p.from)}</div><div style="flex:1;min-width:0"><label class="label" for="p-to">To</label>${sel('p-to','pTo',AREAS.slice(0,8),p.to)}</div></div>
+    <div><div class="label">Passing through</div><div class="row">${p.via.map(v=>chip(v+' ✕',true,'pViaRm',v)).join('')}
+      <div class="selwrap" style="width:96px"><select class="field" style="padding:3px 20px 3px 8px;border-radius:14px;font-size:11px" id="p-via" ${A('pViaAdd')} aria-label="Add an area"><option value="">+ add</option>${AREAS.filter(a=>!p.via.includes(a)&&a!==p.from&&a!==p.to).map(a=>`<option>${a}</option>`).join('')}</select></div></div></div>
+    <div class="row between"><div><label class="label" for="p-time">Leaving around</label><div style="width:120px">${sel('p-time','pTime',TIMES,p.time)}</div></div>
+      <div><div class="label">Seats</div><div class="stepper"><button ${A('pSeats',-1)} aria-label="Fewer">–</button><span>${p.seats}</span><button ${A('pSeats',1)} aria-label="More">+</button></div></div></div>
+    <div class="rel" role="radiogroup"><div class="label">Ask for a fare?</div>
+      ${radio("No, it's a favour",p.fare==='favour','pFare','favour')}
+      <div class="row" style="gap:0">${radio('Yes, Rs',p.fare==='paid','pFare','paid').replace('class="radio','style="width:auto;margin-right:6px" class="radio')}<input class="amt" id="p-amt" inputmode="numeric" ${A('pAmt')} value="${p.fareAmt}" ${p.fare==='paid'?'':'disabled'} aria-label="Fare per seat"><span style="font-size:12px;margin-left:4px">per seat</span></div>${mk(2)}</div>
+    <div class="rel" role="radiogroup"><div class="label">Who can see this?</div>
+      ${Object.entries(AUD).map(([k,l])=>radio(l,p.aud===k,'pAud',k)).join('')}${mk(3)}</div>
+    <div class="note rel">Riders see area and approximate time only. Your number is shared when you accept a request.${mk(4)}</div>
+    ${S.err?`<div class="err" role="alert">${S.err}</div>`:''}
+    <button class="btn primary block" ${A('postRide')}>${p.editId?'Save changes':'Post ride'}</button>
+  </div></div>`;
+}
+function ridingList(){
+  let o='';
+  S.reqs.filter(r=>r.status==='confirmed').forEach(r=>{const d=r.confirmed;o+=`<div class="card"><div class="tiny muted">${(r.day||'Today').toUpperCase()} · CONFIRMED</div><b>${r.from} → ${short(r.to)} · ${d.time}</b>
+    <div class="tiny">Driver: ${d.name} · Pickup: ${d.pickup} · <span class="badge">${d.fare}</span></div>
+    <div class="tiny">${d.name}'s number: <b>03xx-xxxxxxx</b></div>
+    <div class="row" style="margin-top:6px"><button class="btn" ${A('msgDriver',d.name)}>Message ${d.name}</button><button class="btn" ${A('dropRide',r.id)}>Can't make it</button></div></div>`});
+  Object.entries(S.board.requested).forEach(([id,day])=>{
+    const c=[...TODAY,...REGULAR].find(x=>x.id===id); if(!c) return;
+    o+=`<div class="card soft"><div class="tiny muted">SEAT REQUESTED · WAITING FOR THE DRIVER</div><b>${c.campus} → ${c.to} · ${day!==true?day+' ':''}${c.time.replace('~','')}</b>
+      <div class="tiny"><span class="badge">${c.fare}</span> · You'll hear on WhatsApp when they accept.</div>
+      <button class="link" style="align-self:flex-start" ${A('withdrawSeat',id)}>Withdraw request</button></div>`;
+  });
+  o+=`<div class="card"><div class="tiny muted">REGULAR SEAT · TUE, THU</div><b>Main → DHA · ~4:00 pm</b>
+    <div class="tiny rel">Driver: Sara · ✓ Confirmed · <span class="badge">Free · favour</span>${mk(2)}</div>
+    ${S.seatSkip?'<div class="tiny muted">Thu skipped · Sara was told</div>':`<div class="row" style="margin-top:6px"><button class="btn" ${A('skipSeat')}>Can't make it Thu</button></div>`}</div>`;
+  return o;
+}
+function vRides(){
+  const riding=S.myTab==='riding';
+  const seg=`<div class="rel"><div class="seg"><button class="${!riding?'on':''}" ${A('myTab','driving')}>Driving</button><button class="${riding?'on':''}" ${A('myTab','riding')}>Riding</button></div>${mk(riding?1:2)}</div>
+    <div class="tiny muted">${riding?"Seats you've asked for or been given.":"Rides you've posted and offers you've sent."}</div>`;
+  if(riding) return `<div class="scr">${appBar('<small>My rides</small>')}<div class="content">${seg}${ridingList()}</div>${tabbar('s6')}</div>`;
+  let out='';
+  S.rides.forEach(r=>{
+    const nextDay=r.type==='regular'?(r.days.find(d=>!r.cancelled.includes(d))):null;
+    out+=`<div class="card${r.paused?' faded':''}"><div class="tiny muted">${r.type==='regular'?'REGULAR · '+r.days.join(', ').toUpperCase():'TODAY · ONE-OFF'}${r.paused?' · PAUSED':''}</div>
+      <b>${r.from} → ${r.to} · ~${r.time}</b>
+      <div class="tiny">${r.taken} of ${r.seats} seats taken · <span class="badge">${fareTxt(r)}</span> · ${AUD[r.aud]}</div>
+      ${r.cancelled.length?`<div class="tiny muted">${r.cancelled.join(', ')} cancelled · riders told on WhatsApp</div>`:''}
+      <div class="row" style="margin-top:6px"><button class="btn" ${A('editRide',r.id)}>Edit</button>${r.type==='regular'?`<button class="btn" ${A('pauseRide',r.id)}>${r.paused?'Resume':'Pause'}</button>`:''}
+      ${r.type==='regular'?(nextDay?`<button class="btn" ${A('askCancelRide',r.id+'|'+nextDay)}>Cancel ${nextDay}</button>`:''):(r.cancelled.length?'':`<button class="btn" ${A('askCancelRide',r.id+'|today')}>Cancel</button>`)}</div></div>`;
+  });
+  const sr=S.seatReq;
+  out+=`<div class="sec">Seat requests (${sr==='pending'?1:0})</div>`;
+  if(sr==='pending') out+=`<div class="card"><div class="row"><div class="avatar"></div><div><b>Mahnoor</b> wants a seat · Wed<div class="tiny muted">✓ IBA verified · Gulshan</div></div></div>
+    <div class="row" style="margin-top:6px"><button class="btn primary" style="flex:1" ${A('seatAccept')}>Accept</button><button class="btn" style="flex:1" ${A('seatDecline')}>Decline</button></div></div>`;
+  else out+=`<div class="card soft"><span class="tiny muted">${sr==='accepted'?'Mahnoor accepted for Wed · numbers shared on WhatsApp':'Declined Mahnoor · she was told on WhatsApp'}</span></div>`;
+  out+=`<div class="card"><b>Today · Main → Jauhar · 7:40 pm</b><div class="tiny muted">${S.offerCard==='waiting'?'Offer to Mahnoor · waiting for her to accept':'Offer withdrawn · Mahnoor was told'}</div>
+    ${S.offerCard==='waiting'?`<button class="link" style="align-self:flex-start" ${A('withdraw')}>Withdraw offer</button>`:''}</div>`;
+  return `<div class="scr">${appBar('<small>My rides</small>')}<div class="content">${seg}${out}</div>${tabbar('s6')}</div>`;
+}
+function vSettings(){
+  const s=S.settings;
+  return `<div class="scr"><div class="bar"><button ${A('go','home')} aria-label="Back">←</button><span>Settings</span><span class="sp"></span></div><div class="content">
+    <div class="sec">My areas</div>
+    <div class="rel"><label class="label" for="s-home">I live in</label>${sel('s-home','sHome',AREAS.slice(2,8),s.home)}${mk(1)}</div>
+    <div><div class="label">I pass through</div><div class="row">${s.via.map(v=>chip(v+' ✕',true,'sViaRm',v)).join('')}
+      <div class="selwrap" style="width:96px"><select class="field" style="padding:3px 20px 3px 8px;border-radius:14px;font-size:11px" id="s-via" ${A('sViaAdd')} aria-label="Add an area"><option value="">+ add</option>${AREAS.slice(2).filter(a=>!s.via.includes(a)&&a!==s.home).map(a=>`<option>${a}</option>`).join('')}</select></div></div></div>
+    <div><div class="label">My campus</div><div class="seg"><button class="${s.campus==='Main'?'on':''}" ${A('sCampus','Main')}>Main</button><button class="${s.campus==='City'?'on':''}" ${A('sCampus','City')}>City</button></div></div>
+    <div class="sec">Who can ping me &amp; see my rides</div>
+    <div class="rel" role="radiogroup">${Object.entries(AUD).map(([k,l])=>radio(l,s.aud===k,'sAud',k)).join('')}${mk(2)}</div>
+    <div class="sec">Notifications</div>
+    <div class="row between rel"><span>Pause pings for today</span>${toggle(s.pause,'sPause','Pause pings for today')}${mk(3)}</div>
+    <div class="row between"><span>Quiet hours (11 pm – 7 am)</span>${toggle(s.quiet,'sQuiet','Quiet hours')}</div>
+    <div class="row between"><span>Ride follow-up messages</span>${toggle(s.follow,'sFollow','Ride follow-up messages')}</div>
+    <div class="note">Changes save as you make them.</div>
+  </div>${tabbar('')}</div>`;
+}
+function vChat(id){
+  const c=S.chat[id], n=CHATS[id].nodes[c.node]||{};
+  let log=c.log.map(m=>m.sep?`<div class="sep">${m.sep}</div>`:`<div class="b${m.me?' me':''}">${m.h}<span class="t">${m.t||''}</span>${m.mk?mk(m.mk):''}</div>`).join('');
+  if(c.waiting) log+=`<div class="typing">RideBoard is typing…</div>`;
+  else if(n.replies) log+=`<div class="qr${n.col?'':' h'}">${n.replies.map((r,i)=>`<button class="btn" ${A('chatReply',id+'|'+i)}>${r[0]}</button>`).join('')}${n.mk?mk(n.mk):''}</div>`;
+  else if(n.multi) log+=`<div class="qr h">${n.multi.map(o=>`<button class="btn${c.sel.includes(o)?' on':''}" ${A('chatPick',id+'|'+o)} aria-pressed="${c.sel.includes(o)}">${o}${c.sel.includes(o)?' ✓':''}</button>`).join('')}<button class="btn" ${A('chatDone',id)}>Done</button></div>`;
+  const typed=!c.waiting&&n.type;
+  return `<div class="scr wa"><div class="bar"><button ${A('go','home')} aria-label="Back">←</button><div class="avatar" style="width:24px;height:24px"></div><span class="grow">RideBoard <small>bot</small></span><button class="tiny muted" style="font-weight:normal" ${A('chatReset',id)}>Restart</button></div>
+    <div class="chat" id="chat">${log}</div>
+    <div class="compose"><div class="in${typed?' typed':''}">${typed?n.type:'Message'}</div><button class="${typed?'go':''}" ${typed?A('chatSend',id):'disabled'} aria-label="Send">${typed?'➤':''}</button></div></div>`;
+}
+
+/* ---------------- overlays ---------------- */
+function overlay(){
+  let h='';
+  const m=S.modal, sh=S.sheet;
+  if(m){
+    h+=`<div class="dim" ${A('closeOverlay')}></div><div class="modal" role="dialog" aria-modal="true">`;
+    if(m.kind==='cancelRide'){
+      const r=S.rides.find(x=>x.id===m.id);
+      const someone=r&&r.taken>0;
+      h+=`<b>${m.day==='today'?'Cancel this ride?':`Cancel ${({Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday'})[m.day]}'s ride?`}</b>
+        <span class="tiny">${someone?'Mahnoor will get a WhatsApp message right away so she can find another ride.':'Nobody has booked a seat yet, so no one needs to be told.'}</span>
+        <div class="row rel"><button class="btn" style="flex:1" ${A('closeOverlay')}>Keep ride</button><button class="btn primary" style="flex:1" ${A('cancelRide')}>Cancel ride</button>${mk(1)}</div>`;
+    } else if(m.kind==='cancelReq'){
+      const q=reqById(m.id),p=q.pinged-q.declined;
+      h+=`<b>Cancel your request?</b><span class="tiny">The ${p} driver${p!==1?'s':''} still considering it will be told it's no longer needed.</span>
+        <div class="row"><button class="btn" style="flex:1" ${A('closeOverlay')}>Keep request</button><button class="btn primary" style="flex:1" ${A('cancelReq')}>Cancel request</button></div>`;
+    }
+    h+=`</div>`;
+  }
+  if(sh){
+    h+=`<div class="dim" ${A('closeOverlay')}></div><div class="sheet" role="dialog" aria-modal="true">`;
+    if(sh.kind==='menu'){
+      h+=`<b>Menu</b><div class="menu" style="display:flex;flex-direction:column">
+        <button ${A('go','home')}>Home · my request</button><button ${A('go','s10')}>Settings</button>
+        <div class="tiny muted" style="margin-top:8px">WHATSAPP (SIMULATED)</div>
+        <button ${A('go','s7')}>Sign-up chat · driver</button><button ${A('go','s8')}>Ride ping · driver</button><button ${A('go','s9')}>Ride updates · rider</button></div>`;
+    } else if(sh.kind==='seat'){
+      const c=[...TODAY,...REGULAR].find(x=>x.id===sh.id), reg=!!c.days;
+      h+=`<b>Request a seat</b><div class="tiny">${c.campus} → ${c.to}${c.via.length?' via '+c.via.join(', '):''} · ${reg?c.days.join(', ')+' ':''}${c.time}</div>
+        ${reg?`<div class="label" style="margin:4px 0 0">Which day?</div><div class="row">${c.days.map(d=>chip(d,sh.day===d,'seatDay',d)).join('')}</div>`:''}
+        <div class="status"><span class="badge">${c.fare}</span> ${c.fare.startsWith('Rs')?'per seat, paid to the driver directly.':'No fare. The driver is doing a favour.'}</div>
+        <div class="note">The driver sees your first name, area and that you're IBA verified. Numbers are shared only if they accept.</div>
+        ${S.err?`<div class="err" role="alert">${S.err}</div>`:''}
+        <div class="row"><button class="btn" style="flex:1" ${A('closeOverlay')}>Not now</button><button class="btn primary" style="flex:1" ${A('sendSeat')}>Send request</button></div>`;
+    } else if(sh.kind==='offer'){
+      const c=NEEDED.find(x=>x.id===sh.id);
+      h+=`<b>Offer ${c.name} a ride</b><div class="tiny">${c.campus} → ${c.to} · ${c.when.toLowerCase()} · ${c.seats} seat${c.seats>1?'s':''}</div><div class="label" style="margin:4px 0 0">Leaving at</div>
+        <div class="row">${offerTimes(c).map(t=>chip(t,sh.time===t,'offTime',t)).join('')}</div>
+        <div class="label" style="margin:4px 0 0">Ask for a fare?</div>${radio("No, it's a favour",sh.fare==='favour','offFare','favour')}${radio('Yes, Rs 150 per seat',sh.fare!=='favour','offFare','Rs 150')}
+        <div class="note">${c.name} sees your first name, time and fare. Numbers are shared only if she accepts.</div>
+        <div class="row"><button class="btn" style="flex:1" ${A('closeOverlay')}>Cancel</button><button class="btn primary" style="flex:1" ${A('sendOffer')}>Send offer</button></div>`;
+    } else if(sh.kind==='share'){
+      const per=Math.round(sh.total/(sh.seats+1));
+      h+=`<b>Offer your empty seats</b><span class="tiny muted">Book the ride in your usual app, then share it here.</span>
+        <div class="label" style="margin:0">Booked with</div><div class="row">${['Yango','inDrive','Careem'].map(a=>chip(a,sh.app===a,'shApp',a)).join('')}</div>
+        <div class="row between"><span>Empty seats</span><div class="stepper"><button ${A('shSeats',-1)} aria-label="Fewer">–</button><span>${sh.seats}</span><button ${A('shSeats',1)} aria-label="More">+</button></div></div>
+        <div class="row between"><span>Total fare</span><div class="stepper"><button ${A('shTotal',-100)} aria-label="Lower">–</button><span>Rs ${sh.total}</span><button ${A('shTotal',100)} aria-label="Higher">+</button></div></div>
+        <div class="status">Each rider pays <b>Rs ${per}</b> (split ${sh.seats+1} ways, including you). This shows on the board before anyone requests.</div>
+        <div class="row"><button class="btn" style="flex:1" ${A('closeOverlay')}>Back</button><button class="btn primary" style="flex:1" ${A('shPost')}>Put it on the board</button></div>`;
+    } else if(sh.kind==='offers'){
+      const r=reqById(sh.reqId),o=r.offers,i=sh.idx,n=o.length;
+      h+=`<div class="row between"><b>Offers · ${short(r.from)} → ${short(r.to)}</b><span class="tiny muted rel" style="padding-right:14px">${i+1} of ${n}${mk(1)}</span></div>
+        <div class="tiny muted" style="margin-top:-4px">${r.day&&r.day!=='Today'?r.day+' · ':''}${r.mode==='whenever'?'Whenever':'Between '+r.win}${n>1?' · swipe to compare':''}</div>
+        <div class="car"><div class="track" id="track" style="transform:translateX(${-i*100}%)">${o.map(x=>`<div class="slide"><div class="card">
+          <div class="row"><div class="avatar"></div><div><b>${x.name}</b> · leaving <b>${x.time}</b><div class="tiny muted rel" style="padding-right:24px">${x.trust}${mk(4)}</div></div></div>
+          <div class="row rel" style="margin-top:8px"><span class="badge">${x.fare}</span><span class="tiny muted">Pickup: ${x.pickup}</span>${mk(2)}</div></div></div>`).join('')}</div></div>
+        ${n>1?`<div class="carnav"><button ${A('offNav',-1)} aria-label="Previous offer" ${i===0?'disabled':''}>‹</button><div class="cdots">${o.map((_,j)=>`<i class="${j===i?'on':''}"></i>`).join('')}</div><button ${A('offNav',1)} aria-label="Next offer" ${i===n-1?'disabled':''}>›</button></div>`:''}
+        <div class="row rel"><button class="btn primary" style="flex:1" ${A('offAccept')}>Accept ${o[i].name}</button><button class="btn" style="flex:1" ${A('offDecline')}>Decline</button>${mk(3)}</div>
+        <div class="note rel" style="padding-right:18px">${n>1?'Accepting one offer declines the others, and those drivers are told. ':''}Your number is shared only after you accept.${mk(5)}</div>
+        <button class="link" style="align-self:center" ${A('closeOverlay')}>Close</button>`;
+    } else if(sh.kind==='profile'){
+      h+=`<div class="row"><div class="avatar" style="width:40px;height:40px"></div><div><b>Mahnoor</b><div class="tiny muted">Third year · lives in Gulshan</div></div></div>
+        <div class="rel status">${mk(1)}✓ IBA verified (email)<br>✓ 2 rides together, both marked done<br>Usually rides Main → Gulshan, evenings</div>
+        <div class="note">No number, address or photo until you agree to the ride.</div>
+        <button class="btn primary block" ${A('closeOverlay')}>Back to the chat</button>`;
+    }
+    h+=`</div>`;
+  }
+  if(S.toast) h+=`<div class="toast" role="status">${S.toast}</div>`;
+  return h;
+}
+
+/* ---------------- render ---------------- */
+function key(){
+  if(S.sheet&&S.sheet.kind==='profile') return 'profile';
+  if(S.screen==='s6'&&S.myTab==='riding') return 's6r';
+  if(S.screen==='s4'&&S.board.side==='give') return 's4g';
+  if(S.sheet&&S.sheet.kind==='offers') return 'offers';
+  if(S.screen==='home'){const r=S.reqs[0];if(!r)return'home-empty';return {pending:'pending',offer:'s1',nomatch:'s2',confirmed:'confirmed',shared:'shared'}[r.status]}
+  return S.screen;
+}
+function render(){
+  const phone=document.getElementById('phone');
+  const k=key();
+  const prev=phone.querySelector('.content'), st=prev?prev.scrollTop:0, same=lastKey===S.screen;
+  const view={home:vHome,s3:vNew,s4:vBoard,s5:vPost,s6:vRides,s10:vSettings}[S.screen];
+  phone.innerHTML=(view?view():vChat(S.screen))+overlay();
+  phone.classList.toggle('nomk',!S.mk);
+  const c=phone.querySelector('.content'); if(c&&same) c.scrollTop=st;
+  const ch=phone.querySelector('#chat'); if(ch) ch.scrollTop=ch.scrollHeight;
+  lastKey=S.screen;
+  const role=CHATS[S.screen]?CHATS[S.screen].who:(S.screen==='s6'&&S.myTab==='riding')?'Mahnoor · rider · web app':(['s5','s6','s10'].includes(S.screen)?'Zainab · driver · web app':'Mahnoor · rider · web app');
+  document.getElementById('role').textContent='Viewing as '+role;
+  renderHelper(); renderNotes(k); renderTasks();
+}
+function renderHelper(){
+  const b=[];
+  if(S.screen==='home'&&S.reqs.some(r=>r.status==='pending')) b.push(`<button ${A('skip10')}>Skip ahead 10 min (no match)</button>`);
+  if(S.screen==='home'&&!S.reqs.length) b.push(`<button ${A('demoOffer')}>Load an example request</button>`);
+  b.push(`<button ${A('reset')}>Reset prototype</button>`);
+  document.getElementById('helper').innerHTML=b.join('');
+}
+function renderNotes(k){
+  const a=ANN[k]||{t:'',ids:'',items:[]};
+  document.getElementById('notes').innerHTML=`<h2>On this screen</h2><div><h3>${a.t}</h3><div class="ids">${a.ids}</div></div>
+    ${a.items.length?`<ol>${a.items.map((it,i)=>`<li><b class="n">${i+1}</b><span>${it[0]}<em>${it[1]}</em></span></li>`).join('')}</ol>`:'<p class="muted" style="margin:0">Nothing annotated here. Tap “Need a ride” to start a request.</p>'}
+    <label class="switch"><button class="toggle${S.mk?' on':''}" ${A('toggleMk')} role="switch" aria-checked="${S.mk}" aria-label="Show markers on the phone"></button>Show markers on the phone</label>
+    <h2 style="margin-top:6px">Jump to a screen</h2>
+    <div class="jump">${[['s1','1 · Home (requests with offers)'],['s2','2 · Request status (no match)'],['s3','3 · New request'],['s4','4 · Ride board'],['s5','5 · Post a ride'],['s6','6 · My rides'],['s7','7 · WhatsApp sign-up'],['s8','8 · WhatsApp ping → offer'],['s9','9 · WhatsApp rider updates'],['s10','10 · Settings']].map(([id,l])=>`<button class="${k===id||k===id+'r'||k===id+'g'?'cur':''}" ${A('jump',id)}>${l}</button>`).join('')}</div>`;
+}
+function renderTasks(){
+  const t=S.task;
+  let h=`<h2>Phase 3 tasks</h2><p class="muted" style="margin:0;font-size:12px">Start a task to reset the phone to its starting screen. Taps and time are counted until the success condition is met.</p>`;
+  TASKS.forEach(T=>{
+    const on=t&&t.id===T.id;
+    h+=`<div class="task${on?' on':''}"><div class="row between"><span class="tid">${T.id} · starts at Scr ${T.start.slice(1)}</span></div><p>${T.text}</p><div class="meta">Tests ${T.tests}</div>`;
+    if(on&&!t.done) h+=`<div class="runbar"><span id="run-taps">${t.taps} taps</span><span id="run-time">${Math.round((Date.now()-t.t0)/1000)} s</span></div><button class="pbtn" ${A('stopTask')}>Stop</button>`;
+    else if(on&&t.done) h+=`<div class="result ${t.ok?'ok':'part'}">${t.ok?'✓ Success':'△ Partly'} · ${t.taps} taps · ${t.secs} s${t.note?'<br>'+t.note:''}</div><button class="pbtn" ${A('startTask',T.id)}>Run again</button>`;
+    else h+=`<button class="pbtn dark" ${A('startTask',T.id)}>Start ${T.id}</button>`;
+    h+=`</div>`;
+  });
+  if(S.results.length) h+=`<h2>Runs this session</h2><div class="log">${S.results.map(r=>`<span>${r.id} ${r.ok?'✓':'△'} ${r.taps} taps · ${r.secs} s</span>`).join('')}</div>`;
+  document.getElementById('tasks').innerHTML=h;
+}
+
+/* ---------------- tasks ---------------- */
+function startTask(id){
+  const T=TASKS.find(x=>x.id===id);
+  const results=S.results, mkOn=S.mk;
+  S=fresh(); S.results=results; S.mk=mkOn;
+  jump(T.start,true);
+  S.task={id,taps:0,t0:Date.now(),done:false};
+  clearInterval(tick);
+  tick=setInterval(()=>{const e=document.getElementById('run-time');if(S.task&&!S.task.done&&e)e.textContent=Math.round((Date.now()-S.task.t0)/1000)+' s'},1000);
+}
+function ev(name,data){
+  const t=S.task; if(!t||t.done) return;
+  const res=TASKS.find(x=>x.id===t.id).check(name,data); if(!res) return;
+  const [status,...rest]=res.split(':');
+  t.done=true; t.ok=status==='ok'; t.note=rest.join(':'); t.secs=Math.round((Date.now()-t.t0)/1000);
+  S.results.push({id:t.id,ok:t.ok,taps:t.taps,secs:t.secs});
+  clearInterval(tick);
+}
+
+/* ---------------- chat engine ---------------- */
+function chatEnter(id,nodeId){
+  const c=S.chat[id], n=CHATS[id].nodes[nodeId];
+  c.node=nodeId; c.sel=[];
+  const msgs=typeof n.bot==='function'?n.bot(c.vars):n.bot;
+  msgs.forEach(m=>c.log.push(m.sep?{sep:m.sep}:{h:m.h,t:m.t,mk:m.mk}));
+  c.lastT=(msgs.filter(m=>m.t).pop()||{}).t||c.lastT;
+  if(n.event) ev(n.event,c.vars);
+  if(n.auto){c.waiting=true;later(n.auto[1],()=>{c.waiting=false;chatEnter(id,n.auto[0]);render()})}
+}
+function chatSay(id,text,to,set){
+  const c=S.chat[id];
+  c.log.push({me:true,h:text,t:c.lastT});
+  if(set) Object.assign(c.vars,set);
+  c.waiting=true;
+  later(550,()=>{c.waiting=false;chatEnter(id,to);render()});
+}
+function ensureChat(id){const c=S.chat[id];if(!c.node){chatEnter(id,'start')}}
+
+/* ---------------- navigation ---------------- */
+function jump(k,quiet){
+  S.sheet=null;S.modal=null;S.err=null;S.editing=false;
+  if(k==='s1'){S.reqs=[reqOffer(),reqTomorrow()];S.screen='home'}
+  else if(k==='s2'){S.reqs=[reqNomatch()];S.screen='home'}
+  else if(k==='s3'){S.draft={from:'Main campus',to:'Gulshan-e-Iqbal',mode:'between',win:'7–8 pm',seats:1};if(quiet){S.draft.win=null;S.reqs=[]}S.screen='s3'}
+  else if(k==='s5'){S.post=defaultPost();if(quiet){S.post.type='oneoff';S.post.days=[]}S.screen='s5'}
+  else S.screen=k;
+  if(k==='s6') S.myTab='driving';
+  if(k==='s4') S.board.side='seat';
+  if(CHATS[k]) ensureChat(k);
+}
+function go(k){
+  S.sheet=null;S.modal=null;S.err=null;
+  if(k==='s5'&&S.screen!=='s5'){S.post=defaultPost()}
+  S.screen=k; if(CHATS[k]) ensureChat(k);
+}
+function startPinging(r){
+  const my=++r.n, alive=()=>S.reqs.includes(r)&&r.n===my&&r.status==='pending';
+  later(1800,()=>{if(alive()){r.declined=Math.min(r.declined+1,r.pinged);render()}});
+  later(4200,()=>{if(alive()){const pk=r.from.includes('campus')?'Main gate':short(r.from);
+    r.offers=[OFF('Zainab',offerTime(r),'Free · favour',pk,'✓ IBA verified · 2 rides together'),OFF('Hira',altTime(r),'Rs 150',pk,'✓ IBA verified')];
+    r.status='offer';if(S.screen!=='home')toast('2 offers for your ride to '+short(r.to)+'. Open Home to see them.');render()}});
+}
+const altTime=r=>r.mode==='whenever'?'6:30 pm':({'6–7 pm':'6:15 pm','7–8 pm':'7:15 pm','8–9 pm':'8:45 pm'}[r.win]||'7:15 pm');
+function slideTo(to,dx){
+  const from=S.sheet.idx;S.sheet.idx=to;render();
+  const t=document.getElementById('track');if(!t)return;
+  t.classList.add('drag');t.style.transform=`translateX(calc(${-from*100}% + ${dx}px))`;void t.offsetWidth;
+  t.classList.remove('drag');t.style.transform=`translateX(${-to*100}%)`;
+}
+
+/* ---------------- actions ---------------- */
+const ACT={
+  tab:k=>go(k), go:k=>go(k), menu:()=>{S.sheet={kind:'menu'}}, closeOverlay:()=>{S.sheet=null;S.modal=null;S.err=null},
+  jump:k=>jump(k), reset:()=>{const m=S.mk;S=fresh();S.mk=m}, toggleMk:()=>{S.mk=!S.mk},
+  startTask:id=>startTask(id), stopTask:()=>{S.task=null;clearInterval(tick)},
+  demoOffer:()=>{S.reqs=[reqOffer(),reqTomorrow()]},
+  /* new request */
+  newReq:()=>{S.draft={from:'Main campus',to:'Gulshan-e-Iqbal',mode:'between',win:'7–8 pm',seats:1};S.editing=false;go('s3')},
+  editReq:id=>{const r=reqById(id);S.draft={from:r.from,to:r.to,mode:r.mode,win:r.win,seats:r.seats};go('s3');S.editing=id},
+  dFrom:(v,el)=>{S.draft.from=el.value}, dTo:(v,el)=>{S.draft.to=el.value},
+  swap:()=>{const d=S.draft;[d.from,d.to]=[d.to,d.from]},
+  dMode:v=>{S.draft.mode=v;S.err=null}, dWin:v=>{S.draft.win=v;S.err=null},
+  otherTime:()=>toast('A custom time picker opens here. Not built in this prototype.'),
+  dSeats:v=>{S.draft.seats=Math.max(1,Math.min(4,S.draft.seats+ +v))},
+  findRide:()=>{
+    const d=S.draft;
+    if(d.from===d.to){S.err='From and To are the same place.';return}
+    if(d.mode==='between'&&!d.win){S.err='Pick a time window, or choose "Whenever".';return}
+    S.err=null;
+    const ed=S.editing; let r;
+    if(ed){r=reqById(ed);Object.assign(r,{...d,status:'pending',declined:0,offers:[]})}
+    else{r={id:'q'+(++RID),day:'Today',...d,status:'pending',pinged:4,declined:0,offers:[],n:0};S.reqs.unshift(r)}
+    S.editing=false;go('home');startPinging(r);
+    toast(ed?'Request updated. Drivers have the new details.':'Request sent to 4 drivers on your route.');
+  },
+  openOffers:id=>{S.sheet={kind:'offers',reqId:id,idx:0}},
+  offNav:v=>{const sh=S.sheet,n=reqById(sh.reqId).offers.length,to=Math.max(0,Math.min(n-1,sh.idx+ +v));if(to!==sh.idx)slideTo(to,0);return false},
+  offAccept:()=>{const sh=S.sheet,r=reqById(sh.reqId),o=r.offers[sh.idx],others=r.offers.length-1;
+    r.confirmed=o;r.declined+=others;r.offers=[];r.status='confirmed';S.sheet=null;ev('acceptOffer',r);
+    toast('Ride confirmed with '+o.name+'.'+(others?' The other '+(others>1?others+' drivers were':'driver was')+' told.':''))},
+  offDecline:()=>{const sh=S.sheet,r=reqById(sh.reqId),o=r.offers.splice(sh.idx,1)[0];r.declined++;
+    if(!r.offers.length){S.sheet=null;r.status='pending';toast(o.name+' is told. Still waiting on the others.');
+      const my=++r.n;later(4000,()=>{if(S.reqs.includes(r)&&r.n===my&&r.status==='pending'){r.status='nomatch';render()}})}
+    else{sh.idx=Math.min(sh.idx,r.offers.length-1);toast(o.name+' is told. '+r.offers.length+' offer'+(r.offers.length>1?'s':'')+' left.')}},
+  askCancelReq:id=>{S.modal={kind:'cancelReq',id}},
+  cancelReq:()=>{const id=S.modal.id;S.modal=null;S.reqs=S.reqs.filter(r=>r.id!==id);toast('Request cancelled. Drivers have been told.')},
+  clearReq:id=>{const r=reqById(id);if(r&&r.status==='shared')S.board.shared=null;S.reqs=S.reqs.filter(x=>x.id!==id)},
+  msgDriver:n=>{toast('Opens your WhatsApp chat with '+n+'.')},
+  skip10:()=>{const r=S.reqs.find(x=>x.status==='pending');if(r){r.status='nomatch';r.n++}},
+  /* no match */
+  shareSheet:id=>{S.sheet={kind:'share',reqId:id,app:'Yango',seats:3,total:800}},
+  shApp:v=>{S.sheet.app=v}, shSeats:v=>{S.sheet.seats=Math.max(1,Math.min(4,S.sheet.seats+ +v))},
+  shTotal:v=>{S.sheet.total=Math.max(200,S.sheet.total+ +v)},
+  shPost:()=>{const s=S.sheet,r=reqById(s.reqId);r.shared={app:s.app,seats:s.seats,total:s.total};S.board.shared={...r.shared,to:r.to};r.status='shared';S.sheet=null;ev('fallback','Offer the empty seats');toast('Your '+s.app+' is on the board.')},
+  postGroup:id=>{const r=reqById(id);ev('fallback','Post to the WhatsApp group');toast(`Opens the group with your request typed out: "${short(r.from)} → ${short(r.to)}, ${r.mode==='whenever'?'any time':r.win}, anyone?"`)},
+  keepWaiting:id=>{const r=reqById(id);r.status='pending';ev('fallback','Keep waiting');startPinging(r)},
+  /* board */
+  bTab:v=>{S.board.tab=v}, bEve:()=>{S.board.eve=!S.board.eve},
+  bCampus:()=>{S.board.campus=S.board.campus==='Main'?'City':'Main'},
+  bArea:()=>{S.board.area=S.board.area?null:'Gulshan'},
+  moreFilter:()=>toast('More filters (day, fare, audience) open here. Not built in this prototype.'),
+  seatSheet:id=>{S.sheet={kind:'seat',id,day:null};S.err=null},
+  seatDay:d=>{S.sheet.day=d;S.err=null},
+  sendSeat:()=>{const sh=S.sheet,c=REGULAR.find(x=>x.id===sh.id);
+    if(c&&!sh.day){S.err='Pick the day you want the seat.';return}
+    S.board.requested[sh.id]=sh.day||true;S.sheet=null;S.err=null;
+    S.myTab='riding';
+    ev('seatRequest',{id:sh.id,day:sh.day,regular:!!c});toast("Request sent. Track it in My rides › Riding.")},
+  myTab:v=>{S.myTab=v},
+  withdrawSeat:id=>{delete S.board.requested[id];toast('Request withdrawn. The driver was told.')},
+  dropRide:id=>{const r=reqById(id);S.reqs=S.reqs.filter(x=>x.id!==id);toast('Cancelled. '+r.confirmed.name+' got a WhatsApp message.')},
+  skipSeat:()=>{S.seatSkip=true;toast('Thursday skipped. Sara was told.')},
+  bSide:v=>{S.board.side=v},
+  offerSheet:id=>{S.sheet={kind:'offer',id,time:offerTimes(NEEDED.find(x=>x.id===id))[0],fare:'favour'}},
+  offTime:v=>{S.sheet.time=v}, offFare:v=>{S.sheet.fare=v},
+  sendOffer:()=>{const sh=S.sheet,c=NEEDED.find(x=>x.id===sh.id);S.board.offered[sh.id]=sh.time;S.sheet=null;toast('Offer sent: leaving '+sh.time+'. '+c.name+' gets it on WhatsApp.')},
+  /* post */
+  pType:v=>{S.post.type=v;S.err=null}, pDay:d=>{const a=S.post.days;S.post.days=a.includes(d)?a.filter(x=>x!==d):DAYS.filter(x=>a.includes(x)||x===d);S.err=null},
+  pFrom:(v,el)=>{S.post.from=el.value}, pTo:(v,el)=>{S.post.to=el.value}, pTime:(v,el)=>{S.post.time=el.value},
+  pViaRm:v=>{S.post.via=S.post.via.filter(x=>x!==v)}, pViaAdd:(v,el)=>{if(el.value)S.post.via.push(el.value)},
+  pSeats:v=>{S.post.seats=Math.max(1,Math.min(6,S.post.seats+ +v))},
+  pFare:v=>{S.post.fare=v;S.err=null;if(v==='paid')later(0,()=>{const i=document.getElementById('p-amt');i&&i.focus()})},
+  pAmt:(v,el)=>{S.post.fareAmt=el.value.replace(/\D/g,'')}, pAud:v=>{S.post.aud=v},
+  postRide:()=>{
+    const p=S.post;
+    if(p.from===p.to){S.err='From and To are the same place.';return}
+    if(p.type==='regular'&&!p.days.length){S.err='Pick at least one day for a regular ride.';return}
+    if(p.fare==='paid'&&!p.fareAmt){S.err='Enter the fare per seat, or choose "No, it\'s a favour".';return}
+    S.err=null;
+    const ride={id:p.editId||'p'+Date.now(),type:p.type,days:p.type==='regular'?[...p.days]:[],from:p.from,to:p.to,via:[...p.via],time:p.time,seats:p.seats,fare:p.fare,fareAmt:p.fareAmt,aud:p.aud,paused:false,cancelled:[]};
+    if(p.editId){const i=S.rides.findIndex(r=>r.id===p.editId);ride.taken=S.rides[i].taken;ride.cancelled=S.rides[i].cancelled;S.rides[i]=ride;toast('Changes saved. Riders with a seat were told.')}
+    else{ride.taken=0;S.rides.unshift(ride);toast('Posted. Riders on the board can request a seat.')}
+    ev('posted',{type:p.type,days:p.type==='regular'?p.days:[],aud:p.aud});
+    S.screen='s6';
+  },
+  /* my rides */
+  editRide:id=>{const r=S.rides.find(x=>x.id===id);S.post={type:r.type,days:[...r.days],from:r.from,to:r.to,via:[...r.via],time:r.time.replace('~',''),seats:r.seats,fare:r.fare,fareAmt:r.fareAmt,aud:r.aud,editId:id};S.err=null;S.screen='s5'},
+  pauseRide:id=>{const r=S.rides.find(x=>x.id===id);r.paused=!r.paused;toast(r.paused?'Paused. It is hidden from the board until you resume.':'Back on the board.')},
+  askCancelRide:a=>{const[id,day]=a.split('|');S.modal={kind:'cancelRide',id,day}},
+  cancelRide:()=>{const m=S.modal,r=S.rides.find(x=>x.id===m.id);r.cancelled.push(m.day==='today'?'Today':m.day);S.modal=null;ev('cancelRide');toast(r.taken?'Cancelled. Mahnoor got a WhatsApp message.':'Cancelled.')},
+  seatAccept:()=>{S.seatReq='accepted';const r=S.rides.find(x=>x.id==='m1');if(r)r.taken=Math.min(r.seats,r.taken+1);toast('Accepted. Numbers shared on WhatsApp.')},
+  seatDecline:()=>{S.seatReq='declined';toast('Declined. Mahnoor was told.')},
+  withdraw:()=>{S.offerCard='withdrawn';toast('Offer withdrawn. Mahnoor was told.')},
+  /* settings */
+  sHome:(v,el)=>{S.settings.home=el.value}, sViaRm:v=>{S.settings.via=S.settings.via.filter(x=>x!==v)},
+  sViaAdd:(v,el)=>{if(el.value)S.settings.via.push(el.value)},
+  sCampus:v=>{S.settings.campus=v}, sAud:v=>{S.settings.aud=v},
+  sPause:()=>{S.settings.pause=!S.settings.pause;toast(S.settings.pause?'No pings until tomorrow morning.':'Pings are back on.')},
+  sQuiet:()=>{S.settings.quiet=!S.settings.quiet}, sFollow:()=>{S.settings.follow=!S.settings.follow},
+  /* chat */
+  chatReply:a=>{const[id,i]=a.split('|');const c=S.chat[id],r=CHATS[id].nodes[c.node].replies[+i];
+    if(r[3]==='profile'){S.sheet={kind:'profile'};return}
+    chatSay(id,r[0].replace(' ✓',''),r[1],r[2])},
+  chatSend:id=>{const c=S.chat[id],n=CHATS[id].nodes[c.node];chatSay(id,n.type,n.to,n.set)},
+  chatPick:a=>{const[id,o]=a.split('|');const c=S.chat[id];c.sel=c.sel.includes(o)?c.sel.filter(x=>x!==o):[...c.sel,o]},
+  chatDone:id=>{const c=S.chat[id],n=CHATS[id].nodes[c.node];const v=[...c.sel];chatSay(id,v.length?v.join(', '):'None',n.to,{via:v})},
+  chatReset:id=>{S.chat[id]=newChat();ensureChat(id)}
+};
+
+/* ---------------- events ---------------- */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const inPhone=el.closest('#phone');
+  if(inPhone&&S.task&&!S.task.done){S.task.taps++;const t=document.getElementById('run-taps');if(t)t.textContent=S.task.taps+' taps'}
+  if(el.tagName==='SELECT'||el.tagName==='INPUT') return;
+  const fn=ACT[el.dataset.act]; if(!fn) return;
+  if(fn(el.dataset.arg,el)!==false) render();
+});
+let drag=null;
+function countTap(){if(S.task&&!S.task.done){S.task.taps++;const t=document.getElementById('run-taps');if(t)t.textContent=S.task.taps+' taps'}}
+document.addEventListener('pointerdown',e=>{const t=e.target.closest('#track');if(!t)return;drag={x:e.clientX,dx:0};try{t.setPointerCapture(e.pointerId)}catch(_){}t.classList.add('drag')});
+document.addEventListener('pointermove',e=>{if(!drag)return;const t=document.getElementById('track');if(!t){drag=null;return}drag.dx=e.clientX-drag.x;t.style.transform=`translateX(calc(${-S.sheet.idx*100}% + ${drag.dx}px))`});
+function endDrag(){if(!drag)return;const d=drag;drag=null;const t=document.getElementById('track');if(!t||!S.sheet||S.sheet.kind!=='offers')return;
+  const n=reqById(S.sheet.reqId).offers.length;let to=S.sheet.idx;if(d.dx<-40)to++;if(d.dx>40)to--;to=Math.max(0,Math.min(n-1,to));
+  if(to!==S.sheet.idx){countTap();slideTo(to,d.dx)}else{t.classList.remove('drag');t.style.transform=`translateX(${-to*100}%)`}}
+document.addEventListener('pointerup',endDrag);document.addEventListener('pointercancel',endDrag);
+document.addEventListener('keydown',e=>{if(S.sheet&&S.sheet.kind==='offers'&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){e.preventDefault();ACT.offNav(e.key==='ArrowLeft'?-1:1)}});
+document.addEventListener('change',e=>{
+  const el=e.target; if(el.tagName!=='SELECT') return;
+  const fn=ACT[el.dataset.act]; if(fn){fn(el.value,el);render()}
+});
+document.addEventListener('input',e=>{
+  const el=e.target; if(el.tagName!=='INPUT'||!el.dataset.act) return;
+  const fn=ACT[el.dataset.act]; if(fn){fn(el.value,el); if(el.value!==S.post.fareAmt) el.value=S.post.fareAmt}
+});
+
+S=fresh(); render();
+</script>
+
+</body>
+</html>
